@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
-	uuid "github.com/google/uuid"
+	"github.com/google/uuid"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -40,7 +42,8 @@ func RouterBootstrap() *gin.Engine {
 	r.GET("/ping", GetPing)
 	r.GET("/joke", GetJoke)
 	r.POST("/joke", CreateJoke)
-	r.GET("/random/joke")
+	r.GET("/jokes/all", GetAllJokes)
+	r.GET("/random/joke", GetRandom)
 
 	return r
 }
@@ -74,6 +77,21 @@ func GetJoke(c *gin.Context) {
 	})
 }
 
+func GetAllJokes(c *gin.Context) {
+	newUUID := uuid.New().String()
+	ctx := context.WithValue(c.Request.Context(), "UUID", newUUID)
+
+	retrievedJokes, retrieveErr := GetAllJokesFromMongo(ctx)
+	if retrieveErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": retrieveErr.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"all_jokes": retrievedJokes,
+	})
+}
+
 func CreateJoke(c *gin.Context) {
 	var jokeBody MongoJoke
 	if err := c.Bind(&jokeBody); err != nil {
@@ -93,8 +111,49 @@ func CreateJoke(c *gin.Context) {
 
 }
 
-func GetRandomJoke() {
+func GetRandom(c *gin.Context) {
+	retrievedJoke, retrieveErr := GetRandomJoke()
+	if retrieveErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": retrieveErr.Error()})
+		return
+	}
 
+	c.JSON(200, gin.H{
+		"awesome_joke": retrievedJoke,
+	})
+}
+
+type RandomJokeResp struct {
+	HttpError bool        `json:"error"`
+	Category  string      `json:"category"`
+	Type      string      `json:"type"`
+	Joke      string      `json:"joke"`
+	Flags     interface{} `json:"flags"`
+	Id        int         `json:"id"`
+	Safe      bool        `json:"safe"`
+	Lang      string      `json:"lang"`
+}
+
+func GetRandomJoke() (joke string, err error) {
+	resp, err := http.Get("https://sv443.net/jokeapi/v2/joke/Programming,Miscellaneous,Dark?format=json&blacklistFlags=nsfw,sexist,racist&type=single")
+	if err != nil {
+		fmt.Println("error calling random joke generator: ", err)
+		return "", err
+	}
+
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+
+	fmt.Println("joke received io resp body: ", string(body))
+
+	jokeResp := RandomJokeResp{}
+	unmarshallErr := json.Unmarshal(body, &jokeResp)
+	if unmarshallErr != nil {
+		return "", unmarshallErr
+	}
+
+	fmt.Println("retrieved joke: ", jokeResp.Joke)
+	return jokeResp.Joke, nil
 }
 
 const mongoUri = "mongodb://root:example@mongo:27017/"
@@ -145,7 +204,7 @@ func GetJokeByName(ctx context.Context, keyword string) (retrievedJoke MongoJoke
 		return MongoJoke{}, connectErr
 	}
 
-	//possible GetJokeByID endpoint code
+	//possible GetJokeByID endpoint code but not sure if it's necessary
 	// parmID, err := primitive.ObjectIDFromHex(keyword)
 	// if err != nil {
 	// return CreateJokeBody{}, err
@@ -166,4 +225,29 @@ func GetJokeByName(ctx context.Context, keyword string) (retrievedJoke MongoJoke
 		JokeContent: result.JokeContent,
 	}
 	return jokeBody, nil
+}
+
+func GetAllJokesFromMongo(ctx context.Context) (allJokes []MongoJoke, err error) {
+	collection, connectErr := ConnectToMongo(ctx)
+	if connectErr != nil {
+		fmt.Println("Error connecting to Mongo", connectErr)
+		return []MongoJoke{}, connectErr
+	}
+
+	cursor, findErr := collection.Find(ctx, bson.M{})
+	if findErr != nil {
+		fmt.Println("Something went wrong trying to find one document: ", findErr)
+		return []MongoJoke{}, findErr
+	}
+	defer cursor.Close(ctx)
+
+	arrJokes := []MongoJoke{}
+	for cursor.Next(ctx) {
+		var result MongoJoke
+		if err = cursor.Decode(&result); err != nil {
+			fmt.Println("Error decoding result: ", err)
+		}
+		arrJokes = append(arrJokes, result)
+	}
+	return arrJokes, nil
 }

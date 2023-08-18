@@ -1,0 +1,147 @@
+openapi: 3.0.3
+info:
+  title: Dad Jokes
+  description: |-
+    This is over simplified backend GoLang serivce to store and get jokes
+  version: 0.0.1
+servers:
+  - url: http://localhost:8082
+
+paths:
+  /ping:
+    put:
+      tags:
+        - Jokes
+      summary: health status endpoint
+      description: test if the service is alive
+      operationId: ping
+      responses:
+        '200':
+          description: Successful operation
+        '404':
+          description: ping not found
+        '500':
+          description: service has exploded
+
+  /joke:
+    get:
+      tags:
+        - Jokes
+      summary: Get a joke by the joke name stored
+      description: Get a single joke by the name it was stored with
+      operationId: getJoke
+      parameters:
+        - name: joke_name
+          in: query
+          description: Joke name to search by
+          required: true
+          schema:
+            type: string
+            default: jokeName
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                  $ref: '#/components/schemas/JokeResponseBody'
+        '400':
+          description: Invalid name provided
+    post:
+      tags:
+        - Jokes
+      summary: Create a new joke
+      description: Create a new joke
+      operationId: postJoke
+      requestBody:
+        content:
+          application/json:
+            schema:
+                $ref: '#/components/schemas/JokeRequestBody'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                  $ref: '#/components/schemas/CreateJokeResponseBody'
+        '500':
+          description: service has exploded
+  /jokes/all:
+    get:
+      tags:
+        - Jokes
+      summary: retrieve all jokes
+      description: Retrieve all jokes stored
+      operationId: getAllJokes
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                  $ref: '#/components/schemas/GetAllJokesResponseBody'          
+        '500':
+          description: service has exploded
+  /joke/random:
+    get:
+      tags:
+        - Jokes
+      summary: Get a random joke generated
+      description: Returns a random generated joke
+      operationId: getRandomJoke
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RandomJokeResponseBody'          
+        '500':
+          description: something unexpected went wrong
+
+components:
+  schemas:
+    JokeRequestBody:
+      type: object
+      properties:
+        joke_name:
+          type: string
+          example: "joke name"
+        joke_content:
+          type: string
+          example: "knock knock.."
+    CreateJokeResponseBody:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Nice Joke!"
+    GetAllJokesResponseBody:
+      type: object
+      properties:
+        all_jokes:
+          type: array
+          items:
+            $ref: '#/components/schemas/JokeResponseBody'
+    JokeResponseBody:
+      type: object
+      properties:
+        ID:
+          type: string
+          description: unique database identifier
+          example: "64dfc49bec8861cd3214b58a"
+        joke_name:
+          type: string
+          example: "joke name"
+        joke_content:
+          type: string
+          example: "knock knock.."
+    RandomJokeResponseBody:
+      type: object
+      properties:
+        awesome_joke:
+          type: string
+          description: randomly generated joke from external service
+          example: "whats brown and sticky? ...a stick."
+    

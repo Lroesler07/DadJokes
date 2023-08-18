@@ -36,17 +36,19 @@ func main() {
 func RouterBootstrap() *gin.Engine {
 	os.Setenv("PORT", "8082")
 	r := gin.New()
-	//r := gin.Default()
+
 	r.GET("/ping", GetPing)
 	r.GET("/joke", GetJoke)
 	r.POST("/joke", CreateJoke)
-	//r.Run()
+	r.GET("/random/joke")
+
 	return r
 }
 
-type CreateJokeBody struct {
-	JokeName    string `json:"joke_name" bson:"jokeName"`
-	JokeContent string `json:"joke_content" bson:"jokeContent"`
+type MongoJoke struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	JokeName    string             `bson:"joke_name" json:"joke_name"`
+	JokeContent string             `bson:"joke_content" json:"joke_content"`
 }
 
 func GetPing(c *gin.Context) {
@@ -56,10 +58,12 @@ func GetPing(c *gin.Context) {
 }
 
 func GetJoke(c *gin.Context) {
-	param := c.Query("jokeName")
+	param := c.Query("joke_name")
 	newUUID := uuid.New().String()
 	ctx := context.WithValue(c.Request.Context(), "UUID", newUUID)
-	retrievedJoke, retrieveErr := GetJokeFromDatabase(ctx, param)
+
+	fmt.Println("Finding joke with name: ", param)
+	retrievedJoke, retrieveErr := GetJokeByName(ctx, param)
 	if retrieveErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": retrieveErr.Error()})
 		return
@@ -71,8 +75,8 @@ func GetJoke(c *gin.Context) {
 }
 
 func CreateJoke(c *gin.Context) {
-	var jokeBody CreateJokeBody
-	if err := c.ShouldBindJSON(&jokeBody); err != nil {
+	var jokeBody MongoJoke
+	if err := c.Bind(&jokeBody); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -89,6 +93,10 @@ func CreateJoke(c *gin.Context) {
 
 }
 
+func GetRandomJoke() {
+
+}
+
 const mongoUri = "mongodb://root:example@mongo:27017/"
 
 func ConnectToMongo(ctx context.Context) (collection *mongo.Collection, err error) {
@@ -96,7 +104,7 @@ func ConnectToMongo(ctx context.Context) (collection *mongo.Collection, err erro
 		mongoUri,
 	))
 
-	err = client.Ping(ctx, nil)
+	//err = client.Ping(ctx, nil)
 
 	if err != nil {
 		fmt.Println("Error connecting to mongo: ", err)
@@ -109,24 +117,16 @@ func ConnectToMongo(ctx context.Context) (collection *mongo.Collection, err erro
 	return collection, nil
 }
 
-type MongoJoke struct {
-	ID          primitive.ObjectID `bson:"id,omitempty`
-	JokeName    string             `bson:"joke_name,omitempty`
-	JokeContent string             `bson:"joke_content,omitempty`
-}
-
-func InsertJokeToDatabase(ctx context.Context, joke CreateJokeBody) error {
+func InsertJokeToDatabase(ctx context.Context, joke MongoJoke) (err error) {
 	collection, connectErr := ConnectToMongo(ctx)
 	if connectErr != nil {
 		fmt.Println("Error connecting to Mongo", connectErr)
 		return connectErr
 	}
+	fmt.Println("creating joke with name: ", joke.JokeName)
+	joke.ID = primitive.NewObjectID()
 
-	jokes := MongoJoke{
-		JokeName:    joke.JokeName,
-		JokeContent: joke.JokeContent,
-	}
-	insertManyResult, err := collection.InsertOne(context.TODO(), jokes)
+	insertManyResult, err := collection.InsertOne(context.TODO(), joke)
 	if err != nil {
 		fmt.Println("Something went wrong trying to insert the new documents: ", err)
 		return err
@@ -138,23 +138,30 @@ func InsertJokeToDatabase(ctx context.Context, joke CreateJokeBody) error {
 	return nil
 }
 
-func GetJokeFromDatabase(ctx context.Context, keyword string) (retrievedJoke CreateJokeBody, err error) {
+func GetJokeByName(ctx context.Context, keyword string) (retrievedJoke MongoJoke, err error) {
 	collection, connectErr := ConnectToMongo(ctx)
 	if connectErr != nil {
 		fmt.Println("Error connecting to Mongo", connectErr)
-		return CreateJokeBody{}, connectErr
+		return MongoJoke{}, connectErr
 	}
 
+	//possible GetJokeByID endpoint code
+	// parmID, err := primitive.ObjectIDFromHex(keyword)
+	// if err != nil {
+	// return CreateJokeBody{}, err
+	// }
+
 	var result MongoJoke
-	var myFilter = bson.D{{Key: "joke_name", Value: keyword}}
+	myFilter := bson.M{"joke_name": keyword}
 	findErr := collection.FindOne(ctx, myFilter).Decode(&result)
 	if findErr != nil {
 		fmt.Println("Something went wrong trying to find one document: ", findErr)
-		return CreateJokeBody{}, findErr
+		return MongoJoke{}, findErr
 	}
 
 	fmt.Println("Found a document", result)
-	jokeBody := CreateJokeBody{
+	jokeBody := MongoJoke{
+		ID:          result.ID,
 		JokeName:    result.JokeName,
 		JokeContent: result.JokeContent,
 	}

@@ -9,14 +9,16 @@ Simple service to handle storing all the cringy dad jokes and access through a R
 
     $ docker compose -f docker-compose.yml up --build
 Or
+
     $ ./scripts/start.sh
 
+## To Use
 Through Postman (or any other API platform)
 
-GET http://localhost:8082/pings 
-POST http://localhost:8082/joke
-GET http://localhost:8082/joke 
-GET http://localhost:8082/jokes/all
-GET http://localhost:8082/joke/randon  
+    GET http://localhost:8082/pings 
+    POST http://localhost:8082/joke
+    GET http://localhost:8082/joke 
+    GET http://localhost:8082/jokes/all
+    GET http://localhost:8082/joke/random  
 
 
